@@ -1,0 +1,68 @@
+name: Build and Deploy to EKS
+
+on:
+  push:
+    branches: [master]
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+  CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Docker tags
+      id: vars
+      run: echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image to ECR
+      run: |
+        ECR_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}"
+        docker build -t $ECR_URI:latest -t $ECR_URI:$TAG .
+        docker push $ECR_URI:latest
+        docker push $ECR_URI:$TAG
+
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
+
+    - name: Deploy to EKS
+      run: |
+        kubectl set image deployment/satellite-imagery-app satellite-app=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:$TAG
+
+    - name: Wait for rollout to complete
+      run: |
+        kubectl rollout status deployment/satellite-imagery-app --timeout=90s
+
+    - name: Run health check
+      run: |
+        EXTERNAL_IP=$(kubectl get svc satellite-imagery-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+        echo "Checking health at http://$EXTERNAL_IP:8000/health"
+        for i in {1..10}; do
+          if curl -sf "http://$EXTERNAL_IP:8000/health"; then
+            echo "✅ Health check passed!"
+            exit 0
+          else
+            echo "⏳ Waiting for health check..."
+            sleep 10
+          fi
+        done
+        echo "❌ Health check failed!"
+        exit 1
