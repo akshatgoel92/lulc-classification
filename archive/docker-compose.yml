@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  satellite-app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    ports:
+      - "8000:8000"  # FastAPI backend
+      - "8501:8501"  # Streamlit frontend
+    volumes:
+      # Mount your TIFF files directory
+      - ./data:/app/data
+      # Mount for development (optional - remove for production)
+      - ./backend.py:/home/app/backend.py
+      - ./frontend.py:/home/app/frontend.py
+    platform: linux/amd64
+    environment:
+      - TIFF_DATA_PATH=/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  default:
+    name: satellite-network

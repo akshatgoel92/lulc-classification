@@ -1,0 +1,19 @@
+# Core web framework packages
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+streamlit==1.28.1
+requests==2.31.0
+
+# Core scientific computing  
+pandas==2.0.3
+matplotlib==3.7.2
+Pillow==10.0.1
+
+# XML parsing for KML
+lxml==4.9.3
+
+# Additional utilities (pathlib is built-in in Python 3.4+, no need for pathlib2)
+
+# Note: Geospatial packages (GDAL, rasterio, geopandas, etc.) 
+# are installed separately in the Dockerfile to ensure proper 
+# compilation against system GDAL libraries

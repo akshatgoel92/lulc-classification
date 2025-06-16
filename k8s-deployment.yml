@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: satellite-imagery-app
+  labels:
+    app: satellite-imagery
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: satellite-imagery
+  template:
+    metadata:
+      labels:
+        app: satellite-imagery
+    spec:
+      containers:
+        - name: satellite-app
+          image: 927009812732.dkr.ecr.ap-south-1.amazonaws.com/lulc-app:latest
+          ports:
+            - containerPort: 8000
+              name: fastapi
+            - containerPort: 8501
+              name: streamlit
+          env:
+            - name: TIFF_DATA_PATH
+              value: "/app/data"
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: satellite-imagery-service
+spec:
+  selector:
+    app: satellite-imagery
+  type: LoadBalancer
+  ports:
+    - name: fastapi
+      port: 8000
+      targetPort: 8000
+    - name: streamlit
+      port: 8501
+      targetPort: 8501
