@@ -52,7 +52,7 @@ jobs:
 
     - name: Wait for rollout to complete
       run: |
-        kubectl rollout status deployment/satellite-imagery-app --timeout=90s
+        kubectl rollout status deployment/satellite-imagery-app --timeout=300s
 
     - name: Run health check
       run: |
