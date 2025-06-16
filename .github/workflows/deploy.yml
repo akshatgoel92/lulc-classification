@@ -44,7 +44,7 @@ jobs:
         aws eks update-kubeconfig --name $CLUSTER_NAME --region $AWS_REGION
 
     - name: Apply Deployment YAML
-      run: kubectl apply -f deployment.yaml
+      run: kubectl apply -f deployment.yml
 
     - name: Wait for rollout to complete
       run: |
