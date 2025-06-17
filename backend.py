@@ -47,21 +47,6 @@ lulc_tif_paths = {
     2024: DRIVE_ROOT / "LULC_2024_improved_sentinel.tif"
 }
 
-lulc_tif_raw_paths = {
-    2013: DRIVE_ROOT / "LULC_2013_improved_raw.tif",
-    2014: DRIVE_ROOT / "LULC_2014_improved_raw.tif",
-    2015: DRIVE_ROOT / "LULC_2015_improved_raw.tif", 
-    2016: DRIVE_ROOT / "LULC_2016_improved_raw.tif",
-    2017: DRIVE_ROOT / "LULC_2017_improved_raw.tif",
-    2018: DRIVE_ROOT / "LULC_2018_improved_raw.tif",
-    2019: DRIVE_ROOT / "LULC_2019_improved_sentinel_raw.tif",
-    2020: DRIVE_ROOT / "LULC_2020_improved_sentinel_raw.tif",
-    2021: DRIVE_ROOT / "LULC_2021_improved_sentinel_raw.tif",
-    2022: DRIVE_ROOT / "LULC_2022_improved_sentinel_raw.tif",
-    2023: DRIVE_ROOT / "LULC_2023_improved_sentinel_raw.tif",
-    2024: DRIVE_ROOT / "LULC_2024_improved_sentinel_raw.tif"
-}
-
 # Global storage for preloaded TIFF data
 loaded_tiffs = {}
 
@@ -169,191 +154,6 @@ def get_stats(masked_lulc, year):
     except Exception as e:
         print(f"❌ Error calculating statistics: {e}")
         return {"error": str(e)}
-    
-def get_satellite_imagery_from_memory(kml_content: str, year: int, use_raw: bool = False) -> Optional[np.ndarray]:
-    """Extract satellite imagery from preloaded TIFF data using KML polygon"""
-    try:
-        # Check if data is available
-        if year not in loaded_tiffs:
-            print(f"❌ No TIFF data available for year {year}")
-            return None
-        
-        tiff_data = loaded_tiffs[year]
-        
-        # Parse KML and extract geometry
-        coords = parse_kml_coordinates(kml_content)
-        if not coords:
-            print("❌ Failed to parse KML coordinates")
-            return None
-        
-        # Create GeoDataFrame from coordinates
-        polygon = Polygon(coords)
-        gdf = gpd.GeoDataFrame([1], geometry=[polygon], crs="EPSG:4326")
-        
-        print(f"📂 Using preloaded TIFF for year {year}")
-        
-        # Use the preloaded data
-        lulc_data = tiff_data['data']
-        lulc_transform = tiff_data['transform']
-        gdf = gdf.to_crs(tiff_data['crs'])
-        
-        # Create mask using geometry_mask
-        mask = geometry_mask(
-            geometries=gdf.geometry,
-            transform=lulc_transform,
-            invert=True,
-            out_shape=lulc_data.shape
-        )
-        
-        # Apply mask
-        masked_lulc = np.where(mask, lulc_data, np.nan)
-        
-        print(f"✅ Extracted imagery: shape={masked_lulc.shape}, dtype={masked_lulc.dtype}")
-        
-        # Check if we have valid data
-        valid_pixels = ~np.isnan(masked_lulc)
-        if not np.any(valid_pixels):
-            print("❌ No valid data in the masked region")
-            return None
-        
-        print(f"  Valid pixels: {np.sum(valid_pixels)}/{masked_lulc.size}")
-        
-        # Find the bounding box of valid pixels
-        rows = np.any(valid_pixels, axis=1)
-        cols = np.any(valid_pixels, axis=0)
-        rmin, rmax = np.where(rows)[0][[0, -1]]
-        cmin, cmax = np.where(cols)[0][[0, -1]]
-        
-        # Crop to bounding box
-        cropped_lulc = masked_lulc[rmin:rmax+1, cmin:cmax+1]
-        cropped_valid = valid_pixels[rmin:rmax+1, cmin:cmax+1]
-        
-        # Create color-coded visualization for classification data
-        valid_data = cropped_lulc[cropped_valid]
-        if len(valid_data) > 0:
-            print(f"  Unique classes found: {np.unique(valid_data[~np.isnan(valid_data)])}")
-            
-            # Define colors for each LULC class (RGB values 0-1)
-            class_colors = {
-                0: [0.0, 0.0, 1.0],  # Water - Blue
-                1: [0.0, 1.0, 0.0],  # Crop land - Green
-                2: [0.8, 0.6, 0.4],  # Barren - Brown
-                3: [0.0, 0.5, 0.0],  # Forest - Dark Green
-                4: [1.0, 0.0, 0.0],  # Built-up - Red
-            }
-            
-            # Create RGB array for cropped region
-            height, width = cropped_lulc.shape
-            rgb_array = np.zeros((height, width, 3), dtype=np.float32)
-            
-            # Assign colors based on class values
-            for class_value, color in class_colors.items():
-                class_mask = (cropped_lulc == class_value)
-                rgb_array[class_mask] = color
-            
-            # Set invalid pixels to black (or any background color)
-            # This maintains the 2D shape while clearly showing the polygon boundary
-            rgb_array[~cropped_valid] = [0.0, 0.0, 0.0]  # Black background
-            # Or use white background: rgb_array[~cropped_valid] = [1.0, 1.0, 1.0]
-            
-            print(f"✅ Classification RGB array: shape={rgb_array.shape}")
-            print(f"  Cropped from original: [{rmin}:{rmax+1}, {cmin}:{cmax+1}]")
-            print(f"  Color mapping applied for classes: {list(class_colors.keys())}")
-            
-            return rgb_array
-        else:
-            print("❌ No valid data found after masking")
-            return None
-            
-    except Exception as e:
-        print(f"❌ Error processing imagery from memory: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-def get_satellite_imagery_from_memory_old(kml_content: str, year: int, use_raw: bool = False) -> Optional[np.ndarray]:
-    """Extract satellite imagery from preloaded TIFF data using KML polygon"""
-    try:
-        # Check if data is available
-        if year not in loaded_tiffs:
-            print(f"❌ No TIFF data available for year {year}")
-            return None
-        
-        tiff_data = loaded_tiffs[year]
-        
-        # Parse KML and extract geometry
-        coords = parse_kml_coordinates(kml_content)
-        if not coords:
-            print("❌ Failed to parse KML coordinates")
-            return None
-        
-        # Create GeoDataFrame from coordinates
-        polygon = Polygon(coords)
-        gdf = gpd.GeoDataFrame([1], geometry=[polygon], crs="EPSG:4326")
-        
-        print(f"📂 Using preloaded TIFF for year {year}")
-        
-        # Use the preloaded data
-        lulc_data = tiff_data['data']
-        lulc_transform = tiff_data['transform']
-        gdf = gdf.to_crs(tiff_data['crs'])
-
-        # Create mask using geometry_mask
-        mask = geometry_mask(
-            geometries=gdf.geometry,
-            transform=lulc_transform,
-            invert=True,
-            out_shape=lulc_data.shape
-        )
-
-        # Apply mask
-        masked_lulc = np.where(mask, lulc_data, np.nan)
-        
-        print(f"✅ Extracted imagery: shape={masked_lulc.shape}, dtype={masked_lulc.dtype}")
-        
-        # Check if we have valid data
-        valid_pixels = ~np.isnan(masked_lulc)
-        print(valid_pixels)
-        if not np.any(valid_pixels):
-            print("❌ No valid data in the masked region")
-            return None
-            
-        print(f"   Valid pixels: {np.sum(valid_pixels)}/{masked_lulc.size}")
-        
-        # Create color-coded visualization for classification data
-        valid_data = masked_lulc[valid_pixels]
-        if len(valid_data) > 0:
-            print(f"   Unique classes found: {np.unique(valid_data[~np.isnan(valid_data)])}")
-            
-            # Define colors for each LULC class (RGB values 0-1)
-            class_colors = {
-                0: [0.0, 0.0, 1.0],    # Water - Blue
-                1: [0.0, 1.0, 0.0],    # Crop land - Green  
-                2: [0.8, 0.6, 0.4],    # Barren - Brown
-                3: [0.0, 0.5, 0.0],    # Forest - Dark Green
-                4: [1.0, 0.0, 0.0],    # Built-up - Red
-            }
-            
-            # Create RGB array
-            height, width = masked_lulc.shape
-            rgb_array = np.zeros((height, width, 3), dtype=np.float32)
-            
-            # Assign colors based on class values
-            for class_value, color in class_colors.items():
-                class_mask = (masked_lulc == class_value)
-                rgb_array[class_mask] = color
-            print(f"✅ Classification RGB array: shape={rgb_array.shape}, range={rgb_array.min():.3f}-{rgb_array.max():.3f}")
-            print(f"   Color mapping applied for classes: {list(class_colors.keys())}")
-            return rgb_array
-        else:
-            print("❌ No valid data found after masking")
-            return None
-                
-    except Exception as e:
-        print(f"❌ Error processing imagery from memory: {e}")
-        import traceback
-        traceback.print_exc()
-        return e
 
 def get_lulc_analysis_from_memory(kml_content: str, year: int):
     """Get LULC analysis from preloaded TIFF data"""
@@ -401,28 +201,6 @@ def get_lulc_analysis_from_memory(kml_content: str, year: int):
         print(f"❌ Error in LULC analysis: {e}")
         return {"error": str(e)}
 
-def array_to_base64(rgb_array: np.ndarray) -> str:
-    """Convert numpy array to base64 encoded PNG image"""
-    try:
-        # Ensure the array is in the right format
-        if rgb_array.max() <= 1.0:
-            rgb_array = (rgb_array * 255).astype(np.uint8)
-        else:
-            rgb_array = rgb_array.astype(np.uint8)
-        
-        # Create PIL image
-        img = Image.fromarray(rgb_array, mode='RGB')
-        
-        # Convert to base64
-        buffer = io.BytesIO()
-        img.save(buffer, format='PNG')
-        img_str = base64.b64encode(buffer.getvalue()).decode()
-        
-        return img_str
-    except Exception as e:
-        print(f"❌ Error converting array to base64: {e}")
-        return ""
-
 # Load TIFFs at startup
 @app.on_event("startup")
 async def startup_event():
@@ -439,41 +217,15 @@ async def health_check():
         "available_years": sorted(loaded_tiffs.keys())
     }
 
-@app.post("/satellite_imagery")
-async def get_satellite_imagery(request: dict):
-    """Get satellite imagery for a KML polygon and year"""
-    try:
-        kml_content = request.get("kml_content")
-        year = request.get("year")
-        use_raw = request.get("use_raw", False)
-        
-        if not kml_content or not year:
-            raise HTTPException(status_code=400, detail="Missing kml_content or year")
-        
-        imagery = get_satellite_imagery_from_memory(kml_content, year, use_raw)
-        print("This is endpoint....")
-        print(imagery)
-        if imagery is not None:
-            base64_img = array_to_base64(imagery)
-            
-            return {
-                "success": True,
-                "message": f"Successfully extracted satellite imagery for {year}",
-                "imagery_base64": base64_img,
-                "shape": list(imagery.shape),
-                "source": "Pre-stored TIFF",
-                "year": year
-            }
-        else:
-            return {
-                "success": False,
-                "message": f"Failed to extract imagery for {year}. Check if the polygon intersects with available data.",
-                "imagery_base64": None
-            }
-            
-    except Exception as e:
-        print(f"❌ Error in satellite_imagery endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/available_years")
+async def get_available_years():
+    """Get list of available years for analysis"""
+    available_years = sorted(loaded_tiffs.keys())
+    return {
+        "success": True,
+        "years": available_years,
+        "count": len(available_years)
+    }
 
 @app.post("/lulc_analysis")
 async def get_lulc_analysis(request: dict):
